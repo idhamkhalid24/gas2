@@ -328,7 +328,7 @@
                 </p>
             </div>
 
-            <button id="btn-absensi" disabled class="w-full py-5 bg-slate-200 text-slate-400 rounded-3xl font-bold text-lg mb-4 transition-all uppercase tracking-wider shadow-lg">Absen Masuk</button>
+            <button id="btn-absensi" disabled class="w-full py-5 bg-slate-200 text-slate-400 rounded-3xl font-bold text-lg mb-4 transition-all uppercase tracking-wider shadow-lg btn-press">Absen Masuk</button>
 
             <!-- Tombol Kirim Ulang -->
             <div id="resend-container" class="hidden mb-4">
@@ -841,7 +841,6 @@
                         <li>Data hanya disimpan sementara</li>
                         <li>Refresh halaman akan menghapus data</li>
                         <li>Cocok untuk pembelajaran</li>
-                        <li>Tidak bisa sync ke cloud</li>
                     </ul>
                 </div>
                 
@@ -938,7 +937,7 @@
         
         // ============= KONFIGURASI GOOGLE APPS SCRIPT =============
         // GANTI URL INI DENGAN URL WEB APP ANDA SETELAH DEPLOY
-        const GAS_URL = 'https://script.google.com/macros/s/AKfycbzFHPQUppau95c3_OE0FUT0bqeE-nuDGEKYI-uiqR6JUOD4c6QUTjkdYgmZcCiTf9B7xQ/exec';
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycbzFFQa6UL3-ycqIxSTc2ak3_YG_vLoUt5UI7WxeG53XS47mVUxmlBIVo61ymyqWtBbm5A/exec';
         
         // ============= KONFIGURASI SYNC HALUS =============
         const SYNC_CONFIG = {
@@ -1015,7 +1014,7 @@
                 if (offlineBadge) offlineBadge.classList.add('hidden');
                 
                 // Coba sync jika ada antrian
-                if (syncQueue.length > 0 && !isSyncing && !isTrialMode) {
+                if (syncQueue.length > 0 && !isSyncing) {
                     gentleSync();
                 }
             } else {
@@ -1028,13 +1027,9 @@
             }
         }
 
-        // Fungsi untuk menambah ke antrian sync - PERBAIKAN: CEK TRIAL MODE
+        // Fungsi untuk menambah ke antrian sync
         async function addToSyncQueue(action, data) {
-            // PERBAIKAN: Jika mode trial, jangan tambahkan ke antrian sync
-            if (isTrialMode) {
-                console.log('Trial mode: data tidak di-sync ke cloud');
-                return;
-            }
+            if (isTrialMode) return;
             
             const queueItem = {
                 id: Date.now() + Math.random(),
@@ -1136,14 +1131,11 @@
             if (detailEl) detailEl.innerText = detail;
         }
 
-        // Fungsi untuk mengirim ke GAS (tanpa menunggu response) - PERBAIKAN
+        // Fungsi untuk mengirim ke GAS (tanpa menunggu response)
         async function sendToGAS(action, data) {
             try {
                 const formData = new URLSearchParams();
                 formData.append('action', action);
-                
-                // Tambahkan flag trialMode = false untuk memastikan tidak ada data trial yang masuk
-                formData.append('trialMode', 'false');
                 
                 for (let key in data) {
                     if (data[key] !== undefined && data[key] !== null) {
@@ -1153,11 +1145,10 @@
                 
                 formData.append('deviceInfo', JSON.stringify(getDeviceInfo()));
                 
-                // Gunakan mode 'cors' untuk mendapatkan respons
-                const response = await fetch(GAS_URL, {
+                await fetch(GAS_URL, {
                     method: 'POST',
                     body: formData,
-                    mode: 'no-cors' // Tetap no-cors untuk menghindari CORS issues
+                    mode: 'no-cors'
                 });
                 
                 return { success: true };
@@ -1190,15 +1181,9 @@
             }
         }
 
-        // Fungsi sync yang halus (gentle sync) - PERBAIKAN: CEK TRIAL MODE
+        // Fungsi sync yang halus (gentle sync)
         async function gentleSync() {
-            // PERBAIKAN: Jika trial mode, jangan sync
-            if (isTrialMode) {
-                console.log('Trial mode: tidak melakukan sync');
-                return;
-            }
-            
-            if (isSyncing || syncQueue.length === 0 || !isOnline) return;
+            if (isSyncing || syncQueue.length === 0 || !isOnline || isTrialMode) return;
             
             isSyncing = true;
             shouldCancelSync = false;
@@ -1274,12 +1259,10 @@
             showToast("⏸️ Sync dibatalkan");
         }
 
-        // Fungsi untuk sync semua data (manual) - PERBAIKAN
+        // Fungsi untuk sync semua data (manual)
         async function syncNow() {
-            // PERBAIKAN: Jika trial mode, jangan sync
             if (isTrialMode) {
                 showToast("❌ Mode trial tidak bisa sync ke cloud");
-                closeModal('modal-menu');
                 return;
             }
             
@@ -1290,7 +1273,6 @@
             
             if (syncQueue.length === 0) {
                 showToast("📦 Tidak ada data yang perlu disync");
-                closeModal('modal-menu');
                 return;
             }
             
@@ -1298,11 +1280,10 @@
             closeModal('modal-menu');
         }
 
-        // Fungsi untuk restore dari GAS - PERBAIKAN
+        // Fungsi untuk restore dari GAS
         async function restoreFromGAS() {
             if (isTrialMode) {
                 showToast("❌ Mode trial tidak bisa restore dari cloud");
-                closeModal('modal-menu');
                 return;
             }
             
@@ -1479,7 +1460,7 @@
             });
         }
 
-        // Storage functions dengan auto-sync ke cloud - PERBAIKAN
+        // Storage functions dengan auto-sync ke cloud
         async function getStorage(key, defaultValue = "[]") {
             try {
                 if (isTrialMode) {
@@ -1602,18 +1583,16 @@
                         for (const item of items) {
                             await addToStore(STORES.ATTENDANCE, item);
                             
-                            // PERBAIKAN: Tambahkan ke antrian sync hanya jika bukan trial mode
-                            if (!isTrialMode) {
-                                await addToSyncQueue('saveAttendance', {
-                                    id: item.id,
-                                    nama: userData.name,
-                                    type: item.type,
-                                    note: item.note,
-                                    time: item.time,
-                                    date: item.date,
-                                    rawDate: item.rawDate
-                                });
-                            }
+                            // Tambahkan ke antrian sync
+                            await addToSyncQueue('saveAttendance', {
+                                id: item.id,
+                                nama: userData.name,
+                                type: item.type,
+                                note: item.note,
+                                time: item.time,
+                                date: item.date,
+                                rawDate: item.rawDate
+                            });
                         }
                     } else if (key === 'rocky_tx_history') {
                         const items = JSON.parse(value);
@@ -1621,18 +1600,16 @@
                         for (const item of items) {
                             await addToStore(STORES.TRANSACTIONS, item);
                             
-                            // PERBAIKAN: Tambahkan ke antrian sync hanya jika bukan trial mode
-                            if (!isTrialMode) {
-                                await addToSyncQueue('saveTransaction', {
-                                    id: item.id,
-                                    nama: userData.name,
-                                    date: item.date,
-                                    time: item.time,
-                                    items: JSON.stringify(item.items),
-                                    total: item.total,
-                                    rawDate: item.rawDate
-                                });
-                            }
+                            // Tambahkan ke antrian sync
+                            await addToSyncQueue('saveTransaction', {
+                                id: item.id,
+                                nama: userData.name,
+                                date: item.date,
+                                time: item.time,
+                                items: JSON.stringify(item.items),
+                                total: item.total,
+                                rawDate: item.rawDate
+                            });
                         }
                     } else if (key === 'rocky_activity_logs') {
                         const items = JSON.parse(value);
@@ -1640,17 +1617,15 @@
                         for (const item of items) {
                             await addToStore(STORES.ACTIVITY_LOGS, item);
                             
-                            // PERBAIKAN: Tambahkan ke antrian sync hanya jika bukan trial mode
-                            if (!isTrialMode) {
-                                await addToSyncQueue('saveActivityLog', {
-                                    id: item.id,
-                                    nama: userData.name,
-                                    action: item.action,
-                                    detail: item.detail,
-                                    time: item.time,
-                                    rawDate: item.rawDate
-                                });
-                            }
+                            // Tambahkan ke antrian sync
+                            await addToSyncQueue('saveActivityLog', {
+                                id: item.id,
+                                nama: userData.name,
+                                action: item.action,
+                                detail: item.detail,
+                                time: item.time,
+                                rawDate: item.rawDate
+                            });
                         }
                     } else if (key === 'rocky_user_name' || key === 'rocky_user_dom' || key === 'rocky_user_wa') {
                         const users = await getAllFromStore(STORES.USER_DATA);
@@ -1661,14 +1636,12 @@
                             if (key === 'rocky_user_wa') user.wa = value;
                             await putInStore(STORES.USER_DATA, user);
                             
-                            // PERBAIKAN: Tambahkan ke antrian sync hanya jika bukan trial mode
-                            if (!isTrialMode) {
-                                await addToSyncQueue('saveUser', {
-                                    nama: user.name,
-                                    domisili: user.domicile,
-                                    wa: user.wa
-                                });
-                            }
+                            // Tambahkan ke antrian sync
+                            await addToSyncQueue('saveUser', {
+                                nama: user.name,
+                                domisili: user.domicile,
+                                wa: user.wa
+                            });
                         } else {
                             const user = { name: '', domicile: '', wa: '' };
                             if (key === 'rocky_user_name') user.name = value;
@@ -1676,14 +1649,12 @@
                             if (key === 'rocky_user_wa') user.wa = value;
                             await addToStore(STORES.USER_DATA, user);
                             
-                            // PERBAIKAN: Tambahkan ke antrian sync hanya jika bukan trial mode
-                            if (!isTrialMode) {
-                                await addToSyncQueue('saveUser', {
-                                    nama: user.name,
-                                    domisili: user.domicile,
-                                    wa: user.wa
-                                });
-                            }
+                            // Tambahkan ke antrian sync
+                            await addToSyncQueue('saveUser', {
+                                nama: user.name,
+                                domisili: user.domicile,
+                                wa: user.wa
+                            });
                         }
                     } else {
                         localStorage.setItem(key, value);
@@ -1730,7 +1701,7 @@
             }
         }
 
-        // Fungsi untuk memulai mode trial - PERBAIKAN
+        // Fungsi untuk memulai mode trial
         async function startTrialMode() {
             closeModal('modal-menu');
             
@@ -2998,25 +2969,25 @@
                             await checkAndResetDailyData();
                             autoCleanOldData();
                             
-                            // Coba sync kalau ada antrian (hanya jika bukan trial mode)
-                            if (!isTrialMode && syncQueue.length > 0 && isOnline && !isSyncing) {
+                            // Coba sync kalau ada antrian
+                            if (syncQueue.length > 0 && isOnline && !isSyncing) {
                                 gentleSync();
                             }
                         }, SYNC_CONFIG.DELAY_ON_RETURN);
                     }
                 });
                 
-                // Auto sync interval (setiap 5 menit) - PERBAIKAN: CEK TRIAL MODE
+                // Auto sync interval (setiap 5 menit)
                 setInterval(() => {
-                    if (!isTrialMode && isOnline && syncQueue.length > 0 && !isSyncing) {
+                    if (isOnline && syncQueue.length > 0 && !isSyncing) {
                         gentleSync();
                     }
                 }, SYNC_CONFIG.AUTO_SYNC_INTERVAL);
                 
-                // Idle sync (saat browser nganggur) - PERBAIKAN: CEK TRIAL MODE
+                // Idle sync (saat browser nganggur)
                 if (SYNC_CONFIG.IDLE_SYNC && 'requestIdleCallback' in window) {
                     requestIdleCallback(() => {
-                        if (!isTrialMode && syncQueue.length > 0 && isOnline && !isSyncing) {
+                        if (syncQueue.length > 0 && isOnline && !isSyncing) {
                             gentleSync();
                         }
                     }, { timeout: 5000 });
